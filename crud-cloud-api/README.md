@@ -1,33 +1,47 @@
 # Takehome Challenge CRUD API
 
-I built this repo to show how I would approach a small but production-minded CRUD service. It sticks to the required stack—FastAPI, SQLite, JWT auth, SlowAPI rate limiting, Docker, and Terraform to land on ECS Fargate—while keeping the layout friendly for reviewers.
+This repo is exactly how I’d hand a take-home project back to a teammate. It focuses on a clear CRUD API, leans on the required stack (FastAPI, SQLite, JWT, SlowAPI, Docker, Terraform on ECS Fargate), and puts all the “how do I run this?” details in one place for reviewers.
 
 ---
 
 ## How I Navigate the Project
-1. Everything lives inside `crud-cloud-api/`.
-2. I run it locally with Docker first, just to prove out the API.
-3. Once I’m happy, I push an image to ECR and let Terraform spin up ECS + an ALB.
-4. This README is the playbook for both steps.
+1. Everything lives inside `crud-cloud-api/`; there are no hidden folders or scripts elsewhere.
+2. I always run it locally with Docker first so I can demo the API without depending on AWS.
+3. Once it works locally, I tag the Docker image, push it to ECR, and let Terraform create the ECS + ALB stack.
+4. This README is literally the checklist I follow when repeating the flow.
 
 ---
 
 ## What’s Inside
-- **FastAPI app (`app/`)** – `/health`, `/auth/login`, and the protected `/items` CRUD operations. SQLite + SQLAlchemy for storage. SlowAPI enforces 60 req/min globally and 5 req/min on login.
-- **Container bits** – Dockerfile (pinned to `linux/amd64` for Fargate) and a `docker-compose.yml` that mounts the SQLite file into a named volume.
-- **Terraform (`terraform/`)** – Creates an ECR repo, ECS cluster/service (256 CPU / 512 MB), IAM roles, security groups in the default VPC, and an ALB pointed at `/health`. Terraform deliberately doesn’t build/push images—those stay manual.
+- **FastAPI app (`app/`)** – Implements `/health`, `/auth/login`, and the protected `/items` CRUD operations. Here’s what a single Item looks like when you hit GET `/items/1`:
+  ```json
+  {
+    "id": 1,
+    "name": "notebook",
+    "description": "plain ruled",
+    "created_at": "2025-12-16T20:17:00Z",
+    "updated_at": "2025-12-16T20:19:12Z"
+  }
+  ```
+  SQLite + SQLAlchemy handle persistence, and SlowAPI enforces 60 req/min globally plus 5 req/min on the login endpoint.
+- **Container bits** – A single Dockerfile (locked to `linux/amd64` so ECS Fargate doesn’t complain) and a `docker-compose.yml` that mounts the SQLite file into a named volume. That means you can restart `docker compose` without losing test data.
+- **Terraform (`terraform/`)** – Creates the AWS scaffolding: ECR repo, ECS cluster/service (256 CPU / 512 MB), IAM roles, security groups in the default VPC, and an ALB that points to `/health`. Terraform purposely stops short of building or pushing Docker images so you can keep that step explicit.
 
 ---
 
 ## Local Runbook
-Requirements: Docker Desktop (or Engine). Python 3.11 only if you want to run pytest.
+Requirements: Docker Desktop (or Engine). Python 3.11 only matters if you want to run pytest outside Docker.
 
-1. Start the API:
+1. Start the API (Docker will grab base layers the first time, so give it a minute):
    ```bash
    cd crud-cloud-api
    docker compose up --build
    ```
-   Sanity check: `curl http://localhost:8000/health`
+   Sanity check:
+   ```bash
+   curl http://localhost:8000/health
+   # {"status":"ok"}
+   ```
 
 2. Optional tests:
    ```bash
@@ -35,7 +49,7 @@ Requirements: Docker Desktop (or Engine). Python 3.11 only if you want to run py
    pytest
    ```
 
-3. Manual API flow:
+3. Manual API flow (exactly what I demo on calls):
    ```bash
    # login (POST + form body is important)
    curl -X POST -H "Content-Type: application/x-www-form-urlencoded" \
@@ -59,15 +73,21 @@ Requirements: Docker Desktop (or Engine). Python 3.11 only if you want to run py
 ---
 
 ## How the Requirements Are Covered
-- **Auth** – `/auth/login` issues a 30-minute JWT and every `/items` route injects `get_current_user`. Missing or bad tokens get a 401.
-- **Rate limiting** – SlowAPI wraps the FastAPI app. Global limit = 60 req/min per IP, login route = 5 req/min. Overflow returns 429 with `Retry-After`.
+- **Auth** – `/auth/login` issues a 30-minute JWT and every `/items` route injects `get_current_user`. Missing or bad tokens get a 401 response that looks like
+  ```json
+  {
+    "detail": "Could not validate credentials"
+  }
+  ```
+  with the `WWW-Authenticate: Bearer` header so clients know to re-auth.
+- **Rate limiting** – SlowAPI wraps the FastAPI app. Global limit = 60 req/min per IP, login route = 5 req/min. Overflow returns 429 with `{"detail":"Rate limit exceeded..."}` and a `Retry-After` header so you know how long to wait.
 
 ---
 
 ## Deploying to AWS (us-west-2 by default)
-Assumes you already have AWS credentials configured.
+These are the exact commands I run once AWS credentials are configured.
 
-1. **Prep Terraform and create the ECR repo**
+1. **Prep Terraform and create the ECR repo** (run once per environment)
    ```bash
    cd crud-cloud-api/terraform
    terraform init
@@ -76,7 +96,7 @@ Assumes you already have AWS credentials configured.
    IMAGE_REPO="$ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com/takehome-challenge-crud-api"
    ```
 
-2. **Build + push the image (note the amd64 pin in Dockerfile)**
+2. **Build + push the image** (Dockerfile already pins to amd64)
    ```bash
    cd ..
    docker build -t "$IMAGE_REPO:latest" .
@@ -85,7 +105,7 @@ Assumes you already have AWS credentials configured.
    docker push "$IMAGE_REPO:latest"
    ```
 
-3. **Provision ECS, ALB, etc.**
+3. **Provision ECS, ALB, etc.** (takes ~10 min the first time)
    ```bash
    cd terraform
    terraform apply \
@@ -94,7 +114,7 @@ Assumes you already have AWS credentials configured.
    ```
 
 4. **Smoke test through the ALB**
-   Terraform prints `alb_dns_name`. Use it exactly like localhost:
+   Terraform prints `alb_dns_name`. Use it just like localhost—only the hostname changes:
    ```bash
    BASE_URL="http://takehome-challenge-crud-api-alb-XXXX.us-west-2.elb.amazonaws.com"
    curl "$BASE_URL/health"
@@ -102,7 +122,7 @@ Assumes you already have AWS credentials configured.
    curl -H "Authorization: Bearer $TOKEN" "$BASE_URL/items"
    ```
 
-If the ALB ever returns 503, run `aws ecs describe-services ...` and `aws logs tail /ecs/takehome-challenge-crud-api --region us-west-2` to see whether the new task is still booting or failing health checks.
+If the ALB ever returns 503, run `aws ecs describe-services ...` and `aws logs tail /ecs/takehome-challenge-crud-api --region us-west-2` to see whether the new task is still booting or failing health checks. Most issues boil down to “forgot to push the Docker image” or “health checks haven’t turned green yet.”
 
 ---
 
@@ -135,7 +155,7 @@ If the ALB ever returns 503, run `aws ecs describe-services ...` and `aws logs t
 ---
 
 ## When You’re Done
-Tear down the AWS resources and clean up the registry so the Free Tier bill doesn’t creep up:
+Here’s how I tear everything down once a reviewer is finished:
 ```bash
 cd crud-cloud-api/terraform
 terraform destroy -var "aws_region=us-west-2" -var "image_tag=latest"
