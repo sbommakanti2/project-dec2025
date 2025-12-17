@@ -1,3 +1,4 @@
+// IAM roles letting ECS pull images and talk to other AWS services.
 data "aws_iam_policy_document" "ecs_task_execution_assume_role" {
   statement {
     actions = ["sts:AssumeRole"]

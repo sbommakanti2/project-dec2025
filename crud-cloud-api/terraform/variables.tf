@@ -1,3 +1,4 @@
+// Input variables to keep terraform apply invocations simple.
 variable "aws_region" {
   description = "AWS region"
   type        = string

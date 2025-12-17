@@ -1,3 +1,5 @@
+"""FastAPI application wiring auth, CRUD handlers, and rate limiting."""
+
 from datetime import timedelta
 from typing import List
 
@@ -15,7 +17,7 @@ from app.db import crud, models, schemas
 from app.db.database import Base, engine, get_db
 
 settings = get_settings()
-# SQLite tables are created on startup to avoid a separate migration step.
+# FastAPI + SQLite is lightweight, so creating tables on import keeps the setup trivial.
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title=settings.app_name)
@@ -24,12 +26,14 @@ init_rate_limiter(app)
 
 @app.get("/health")
 def health_check():
+    """Bare-bones readiness probe used by ALB health checks."""
     return {"status": "ok"}
 
 
 @app.post("/auth/login")
 @limiter.limit(settings.login_rate_limit)
 def login(request: Request, form_data=Depends(get_login_form)):
+    """Validate the demo credentials and return a JWT."""
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
@@ -45,6 +49,7 @@ async def create_item(
     db=Depends(get_db),
     _: dict = Depends(get_current_user),
 ):
+    """Insert a new item; SlowAPI still inspects `_request` for rate tracking."""
     return crud.create_item(db, item)
 
 
@@ -54,6 +59,7 @@ async def list_items(
     db=Depends(get_db),
     _: dict = Depends(get_current_user),
 ):
+    """Return every item for the authenticated caller."""
     return crud.get_items(db)
 
 
@@ -64,6 +70,7 @@ async def read_item(
     db=Depends(get_db),
     _: dict = Depends(get_current_user),
 ):
+    """Fetch an item or raise 404 if it no longer exists."""
     db_item = crud.get_item(db, item_id)
     if not db_item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
@@ -78,6 +85,7 @@ async def update_item(
     db=Depends(get_db),
     _: dict = Depends(get_current_user),
 ):
+    """Update mutable Item fields while keeping limiter hooks intact."""
     db_item = crud.get_item(db, item_id)
     if not db_item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
@@ -91,6 +99,7 @@ async def delete_item(
     db=Depends(get_db),
     _: dict = Depends(get_current_user),
 ):
+    """Remove the record and rely on FastAPI's 204 convention."""
     db_item = crud.get_item(db, item_id)
     if not db_item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")

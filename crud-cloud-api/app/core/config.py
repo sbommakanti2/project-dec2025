@@ -1,8 +1,13 @@
+"""Central place for runtime configuration pulled from env or defaults."""
+
 from functools import lru_cache
+
 from pydantic import BaseSettings
 
 
 class Settings(BaseSettings):
+    """Defines knobs the service uses for auth, rate limiting, and storage."""
+
     app_name: str = "Takehome Challenge CRUD API"
     secret_key: str = "super-secret-demo-key"
     access_token_expire_minutes: int = 30
@@ -17,4 +22,5 @@ class Settings(BaseSettings):
 
 @lru_cache()
 def get_settings() -> Settings:
+    """Cache the settings object so dependency injection is cheap."""
     return Settings()

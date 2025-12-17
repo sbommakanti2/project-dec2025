@@ -1,3 +1,4 @@
+// ECS cluster, task definition, and service wiring the container to the ALB.
 resource "aws_ecs_cluster" "app" {
   name = "${local.name_prefix}-cluster"
 }

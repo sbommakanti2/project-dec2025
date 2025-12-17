@@ -1,4 +1,4 @@
-# Build for linux/amd64 so the image runs on ECS Fargate.
+# Build for linux/amd64 so Fargate doesn't hit "exec format" errors from an ARM image.
 FROM --platform=linux/amd64 python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

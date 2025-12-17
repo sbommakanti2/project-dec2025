@@ -1,4 +1,4 @@
-
+# Docker Compose file for running the API locally with a persistent SQLite volume.
 services:
   api:
     build: .

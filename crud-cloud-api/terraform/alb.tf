@@ -1,3 +1,4 @@
+// Application Load Balancer exposing the FastAPI service publicly.
 resource "aws_lb" "app" {
   name               = substr("${local.name_prefix}-alb", 0, 32)
   internal           = false

@@ -1,3 +1,5 @@
+"""Authentication helpers: hashing, faux user lookup, and JWT creation/validation."""
+
 from datetime import datetime, timedelta
 from typing import Optional
 import hashlib
@@ -13,15 +15,18 @@ from app.core.config import get_settings
 settings = get_settings()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
+
 def _hash_password(password: str) -> str:
+    """Return a deterministic SHA-256 hash for the plain password."""
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Check a password using constant-time comparison."""
     return secrets.compare_digest(_hash_password(plain_password), hashed_password)
 
 
-# Hard-coded user keeps the sample focused on API behavior rather than user storage.
+# A single demo user keeps the exercise focused on API behavior rather than user storage.
 fake_user_db = {
     "demo": {
         "username": "demo",
@@ -32,11 +37,14 @@ fake_user_db = {
 
 
 class TokenData:
+    """Pydantic-style helper for storing the username pulled from a JWT."""
+
     def __init__(self, username: Optional[str] = None):
         self.username = username
 
 
 def authenticate_user(username: str, password: str) -> Optional[dict]:
+    """Return the user dict if credentials match, else None."""
     user = fake_user_db.get(username)
     if not user:
         return None
@@ -46,6 +54,7 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """Issue a signed JWT with an expiration claim."""
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=settings.access_token_expire_minutes))
     to_encode.update({"exp": expire})
@@ -53,6 +62,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
+    """Decode the bearer token and return the corresponding fake user."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -72,4 +82,5 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
 
 
 def get_login_form(form_data: OAuth2PasswordRequestForm = Depends()) -> OAuth2PasswordRequestForm:
+    """Expose FastAPI's OAuth form dependency so the login route stays tidy."""
     return form_data

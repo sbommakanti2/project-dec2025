@@ -1,3 +1,4 @@
+// Minimal networking: default VPC + security groups for ALB and tasks.
 data "aws_vpc" "default" {
   default = true
 }
