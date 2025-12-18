@@ -29,9 +29,15 @@ This repo is exactly how I’d hand a take-home project back to a teammate. It f
 
 ---
 
-## Local Runbook
-Requirements: Docker Desktop (or Engine). Python 3.11 only matters if you want to run pytest outside Docker.
+## Prerequisites I used
+- Docker Desktop (v4.x) or Docker Engine 24.x
+- Python 3.11 (only if you plan to run pytest outside Docker)
+- Terraform 1.6+
+- AWS CLI v2 with credentials that can create ECR/ECS/ALB resources in `us-west-2`
 
+---
+
+## Local Runbook
 1. Start the API (Docker will grab base layers the first time, so give it a minute):
    ```bash
    cd crud-cloud-api
